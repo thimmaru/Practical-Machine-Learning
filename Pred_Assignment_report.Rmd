@@ -1,0 +1,109 @@
+---
+Author: Thimmaraju Rudrappa
+Output:
+  html_document:
+    fig_height: 9
+    fig_width: 9
+Title: Practical Machine Learning_Prediction Assignment Writeup
+---
+
+## Introduction  
+
+It is possible now to collect large amount of data on personal activity using devices such as Jawbone Up, Nike FuelBand, and Fitbit relatively inexpensively. These devices are part of the quantified self movement a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.  
+
+In this project, the data generated using accelerometers on the belt fore arm, arm and dumbell by 6 participants will used predict the manner in which they do the exercise.
+
+##Load required packages
+```{r, cache = T}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+```
+
+## Create directory, downloading the dataset from the source and unzip
+```{r, cache = T}
+if(!file.exists("./data")){dir.create("./data")}
+```
+## url for the dataset source for the project:
+```{r, cache = T}
+trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+```
+
+## Read the Data
+```{r, cache = T}
+trainSet <- read.csv("./data/pml-training.csv")
+testSet <- read.csv("./data/pml-testing.csv")
+dim(trainSet)
+dim(testSet)
+```
+Training data set has 19622 observations and 160 variables, whereas the test set has 20 observations and 160 variables. 
+The variable "classe" in the training set is the outcome to predict. 
+
+### Clean the data
+In the step we eliminate the missing values and meaningless variables
+```{r, cache = T}
+sum(complete.cases(trainSet))
+```
+Remove columns that contain NA missing values
+```{r, cache = T}
+trainSet <- trainSet[, colSums(is.na(trainSet)) == 0] 
+testSet <- testSet[, colSums(is.na(testSet)) == 0] 
+```
+
+Remove variables/ columns that do not contribute to accelerometer measurements
+```{r, cache = T}
+classe <- trainSet$classe
+trainRem <- grepl("^X|timestamp|window", names(trainSet))
+trainSet <- trainSet[, !trainRem]
+trainClean <- trainSet[, sapply(trainSet, is.numeric)]
+trainClean$classe <- classe
+testRem <- grepl("^X|timestamp|window", names(testSet))
+testSet <- testSet[, !testRem]
+testClean <- testSet[, sapply(testSet, is.numeric)]
+```
+Cleaned training data set has 19622 observations and 53 variables, whereas the testing data set has 20 observations and 53 variables. The "classe" variable is intact in the cleaned training set
+
+## Slice the data
+In this step we partition the training data set in to pure training set (70%) & a validation set (30%)
+```{r, cache = T}
+set.seed(123)
+inTrain <- createDataPartition(trainClean$classe, p=0.70, list=F)
+trainData <- trainClean[inTrain, ]
+testData <- trainClean[-inTrain, ]
+```
+##Data Modeling
+We use **Random Forest** algorithm to fit the model for activity recognition as it automatically selects important variables and also is robust to correlate covariates & outliers. We will use **5-fold cross validation** for applying the algorithm.
+```{r, cache = T}
+controlRf <- trainControl(method="cv", 5)
+modelRf <- train(classe ~ ., data=trainData, method="rf", trControl=controlRf, ntree=250)
+modelRf
+```
+
+Estimation of performance of the model on the validation data set
+```{r, cache = T}
+predictRf <- predict(modelRf, testData)
+confusionMatrix(testData$classe, predictRf)
+```
+## Model accuracy
+```{r, cache = T}
+accuracy <- postResample(predictRf, testData$classe)
+accuracy
+Macc <- 1 - as.numeric(confusionMatrix(testData$classe, predictRf)$overall[1])
+Macc
+```
+Estimated accuracy of the model is 99.42% & the estimated out-of-sample error is 0.58%
+
+## Predicting for Test Set
+```{r, cache = T}
+Pred <- predict(modelRf, testClean[, -length(names(testClean))])
+Pred
+```
+## Appendix: Correlation and decision tree plots
+Decision Tree Visualization
+```{r, cache = T}
+treeModel <- rpart(classe ~ ., data=trainData, method="class")
+prp(treeModel)
+```
+
